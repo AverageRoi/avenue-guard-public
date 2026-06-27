@@ -1,325 +1,101 @@
 # Avenue Guard
 
-Avenue Guard is the Discord utility bot for GD Avenue. It handles moderation guardrails, live level request waves, weekly activity rewards, staff tickets, DM help flows, forum reminders, sticky notices, configurable auto-responses, and a few community fun commands.
+Avenue Guard is the Discord utility bot for GD Avenue. It handles moderation guardrails, live level request waves, weekly activity rewards, staff tickets, DM help flows, forum reminders, sticky notices, configurable auto-responses, server icon rotations, and a few community fun commands.
 
-The bot is intentionally built around one configured server. Most behavior is controlled from `config.json`, with message-trigger responses in `responses.json` and persistent state in the configured SQLite database path. On Render, the bot auto-uses `/var/data/avenue-guard/bot.db` when a Persistent Disk is mounted there.
+Now, you probably are wondering: **"Where is the code?"** Totally fair question. Due to recent events and for server security reasons, mainly to prevent the bot from being abused, the **code is on a private repository**.
 
-## Core Features
+Even though I cannot publish the source code here, this page explains what Avenue Guard does, how it is organized, and why it matters to the server. Think of this as a public walkthrough of the bot as a real community system, without exposing private implementation details, secrets, role IDs, channel IDs, or abuse-sensitive logic.
 
-### Server Guardrails
-- Restricts the bot to one guild using `guild.allowed_guild_id`.
-- Auto-deletes messages and reactions in the configured creator-points proof channel.
-- Applies a restriction role to users who post/react where they should not.
-- Allows configured whitelist roles to bypass that restriction flow.
-- Sends configurable DMs when users gain watched roles.
+## What Avenue Guard Is
 
-### Weekly Activity Requests
-- Counts eligible member messages per configured server week.
-- Skips configured roles and channels.
-- Skips and logs repeated low-effort message farming patterns before they count.
-- Buffers activity writes briefly with `tracking.activity_flush_seconds` so busy chat does less SQLite work.
-- Provides `/tracking top`, `/tracking me`, `/tracking reset`, `/tracking force_dm`, `/tracking disable_reward`, and `/tracking enable_reward`.
-- Tracks top-5 weekly streaks and shows streak markers in tracking embeds.
-- DMs weekly winners with a configurable request embed.
-- Supports claim, decline confirmation, timeout, reminders, and automatic offer to the next eligible member.
-- Posts weekly request submissions as configurable embeds with `Send`, `Reject`, and `Other` review buttons.
-- Weekly submitted requests use the same staff review/result workflow as live wave requests, but do not count toward or appear in any request wave summary.
-- Weekly submitted request embeds include submission timing and reviewer action buttons.
-- Admins can disable the automatic weekly request reward for the current tracking week.
-- Logs weekly request events, including manual `/tracking force_dm` outcomes, to SQLite and optionally to a log channel.
-- Logs weekly request recording failures instead of silently closing a claim when the staff request channel cannot be used.
-- Weekly request log embeds use readable event names, colors, member context, and structured details.
-- Posts a private weekly recap embed to the daily-summary/log channel with activity, weekly request, review, streak, and anti-farm signals.
+GD Avenue is an active Discord community, and a server that size creates a lot of repeated operational work. Members need help, staff need logs, requests need structure, tickets need transcripts, forum posts need formatting, and activity rewards need to be tracked fairly. Avenue Guard was built to make those recurring workflows smoother and more reliable.
 
-### Live Level Request Waves
-- Posts a persistent request embed/button in `level_requests.request_channel`.
-- Mods can recreate or refresh the request button with `/refresh-request-button`.
-- Admins can open request waves with `/open-requests`.
-- Request waves can optionally be limited by type, including needs showcase, only demons, only platformers, only classic, non-demon variants, and Long/XL levels.
-- Admins can schedule future request openings with `/open-requests when:<HH:MM> day:<optional>`.
-- Sends a configurable opening announcement when a wave opens, with a default ping to the configured request role.
-- Admins can list, edit, delete, refresh, or immediately open scheduled openings from the `/pending-openings` interactive panel.
-- “Open now” asks for confirmation if requests are already open, and automatic scheduled openings will not silently replace an active wave.
-- Admins can close request waves with `/close-requests`.
-- Anyone can check the current state with `/requests-are`.
-- Supports open, closed, limited-count, timed, and indefinite request waves.
-- Counts a request only after the modal form is successfully submitted.
-- Blocks duplicate users and duplicate level IDs inside the same wave.
-- Warns staff when a submitted level ID has appeared in previous waves.
-- Validates level IDs as 7 to 9 digits, validates showcase links as URLs, and checks level existence through GDBrowser plus the direct GD/Boomlings endpoint.
-- Enforces the active wave type after GD validation and before the request counts toward the wave.
-- Reuses one validation HTTP session, rate-limits validation attempts per user, and temporarily backs off providers that fail repeatedly.
-- Auto-rejects confidently missing level IDs while surfacing uncertain validation warnings to reviewers.
-- Warns reviewers when a level appears rated, when validation sources disagree, or when validation will refresh after the configured cache time.
-- Automatically requires a showcase URL when validation detects a demon or platformer.
-- Lets users edit their pending request with `/edit-request` or by pressing the request button until the wave closes, plus the configured grace period.
-- Stores every request edit in an audit trail and exposes it with `/requests history`.
-- Shows request age with Discord relative timestamps.
-- Resets per-user and per-level duplicate tracking when a new wave starts.
-- Checks configurable required roles before showing the request form.
-- Supports the first-request `I will` / `I won't` choice flow with configurable roles.
-- Sends staff review embeds to `level_requests.level_requested`.
-- Configured reviewer roles, admins, and owners can choose `Send`, `Reject`, or `Other`.
-- Staff can filter pending live-wave and weekly requests with `/requests pending`.
-- Admins can run `/requests repair` to refresh the request button, rebuild wave summaries, recreate missing pending request messages, refresh stale validation warnings, and relock reviewed messages.
-- Review actions verify the original request message and result channel before marking the request reviewed.
-- Sends final result embeds to `level_requests.sent_channel` or `level_requests.rejected_channel`.
-- Disables review buttons after a request is processed.
-- Posts one live summary embed per closed wave in `level_requests.level_requested`, including requested, reviewed, sent, not sent, percentages, remaining reviews, and reviewer stats.
-- Stores request state, request button message ID, wave count, submitted users, and submitted level IDs in SQLite so restarts do not wipe the wave.
+The bot is not just a single-purpose moderation tool. It is closer to a community operations assistant. It connects several systems together: request management, activity tracking, support tickets, private help menus, forum reminders, moderation guardrails, analytics, backups, and small interactive features that make the server feel more alive.
 
-### Help Menu And Staff Tickets
-- DMs members a help dashboard with active tickets, weekly activity, live request state, recent help submissions, and cooldowns.
-- Supports Back, Cancel, and Start Over controls during active DM help flows.
-- Cleans up the previous DM help screen when members select a new option, press a flow button, cancel, or start over.
-- Hides the current help screen from the menu so members are not offered the same page they are already viewing.
-- Supports FAQ browsing and keyword search from the menu or by typing phrases like `faq request`.
-- Suggests relevant FAQ entries before opening a staff ticket.
-- Supports FAQ, punishment appeals, user reports, bot issue reports, weekly status checks, transcript requests, and staff contact tickets.
-- Appeals, reports, and bot issue reports show a preview before submission, keep attachment links, receive tracked IDs, and can be checked later from My submissions.
-- Staff can reply to a tracked appeal/report/bug log embed to relay a response back to the submitter by DM.
-- Creates routed private ticket channels for the requester and staff, using the selected topic in the ticket name and opening message.
-- Uses atomic ticket IDs to avoid duplicate ticket numbers during simultaneous ticket creation.
-- Caches active ticket channels so normal server messages do not hit the database for ticket checks.
-- Tracks ticket inactivity and prompts staff to close stale tickets.
-- Tracks ticket statuses: Waiting for user, Waiting for staff, and Resolved.
-- Keeps the ticket opening message status in sync when users or staff reply, when staff changes status, and before closure transcripts are saved.
-- Saves transcripts before deleting tickets.
-- Lets staff search saved ticket transcripts by user or ticket ID.
-- Sends a configurable satisfaction prompt after a ticket closes.
-- Lets staff approve or deny transcript requests.
-- Posts appeals, reports, bot issues, transcript requests, ticket transcripts, and bot errors as structured staff-log embeds with safe mention behavior and audit logs.
+The most important design goal is consistency. If a workflow starts, Avenue Guard tries to remember it, log it, and keep it recoverable. A level request should not disappear because the bot restarted. A ticket should not close without a transcript. A staff review should not be processed twice. A weekly reward should have a visible history. The bot is built around that kind of practical reliability.
 
-### Forum And Sticky Automation
-- Posts sticky reminder messages at the bottom of configured text channels.
-- Sends first-message reminder embeds in configured forum channels.
-- Supports tag-specific forum reminder embeds.
-- Can enforce a required word in forum post title/body.
-- Required-word matching supports `contains`, `whole_word`, and `regex` modes with basic text normalization.
-- If the required word is missing, Avenue Guard DMs the thread owner and deletes the forum thread.
-- Logs required-word forum deletions with the deleted thread and author.
-- Admins can view or change the required word with `/forum required_word`.
+## Level Requests
 
-### Configurable Auto-Responses
-- Uses `responses.json` for message-triggered replies.
-- Supports whole-message or contains matching.
-- Supports plain messages or embeds.
-- Supports channel filters and per-user cooldowns.
-- Stops after the first matching rule.
-- Blocks mass mentions from configured auto-responses and caps configured response length.
+One of Avenue Guard's biggest jobs is managing level requests. Instead of relying on messy manual messages, the bot can open and close request waves. When requests are open, members press a request button, fill out a form, and submit their level information. When requests are closed, the bot simply tells them requests are unavailable.
 
-### Background Utilities
-- `/bot dashboard` opens a button-driven admin dashboard with system health, request state, tracking state, icon rotation, config issues, and repair tips.
-- `/bot impact` generates an owner-only community impact and forecast report, stores a database snapshot, and posts Markdown, CSV, trend CSV, breakdown CSV, and JSON exports to the configured impact/log channel.
-- `/bot backup` creates a zipped database backup and posts it to the configured backup/log channel.
-- `/bot storage` shows the active database path, whether it looks persistent, automatic backup status, and the latest backup record.
-- `/bot health` shows database, background task, request, ticket, and weekly workflow status.
-- `/bot config_check` validates configured channels, roles, request embed template variables, and `responses.json` rule shape/channel references.
-- `/bot doctor` runs deeper permission diagnostics for channels, ticket category access, managed role hierarchy, and request-button state.
-- `/requests pending` shows and filters pending live-wave and weekly request reviews.
-- Optional rotating bot status with placeholders like `{members}`, `{online}`, `{week_msgs}`, `{week_top}`, `{open_tickets}`, and `{today_msgs}`.
-- Optional server icon rotation from configured image URLs, with `disabled`, `linear`, and `random` modes.
-- Optional daily server summary embeds with highlights, day-over-day movement, active members/channels, moderation signals, command health, voice/presence, and top channels/members/commands.
-- Tracks daily messages, edits, deletes, reactions, joins, leaves, bans, boosts, voice minutes, command usage, and top channels/users.
-- Includes a small keepalive HTTP server for hosted environments.
+Request waves can be opened with different limits. Staff can open requests for a certain number of successful submissions, for a certain amount of time, indefinitely, or through a scheduled opening. The bot only counts a request after the form is successfully submitted, so simply clicking a button does not waste a slot.
 
-### Fun Commands
-- `/dance` sends the configured GIF.
-- `/rock-paper-scissors` runs a button-based game with per-user cooldown and optional streak reward role.
-- `/gambling` runs a small slot animation with optional rare reward role.
+The request system also prevents common problems. A user can only submit once per wave, repeated level IDs are blocked during the same wave, and users can edit their request for a limited time if they notice a mistake. Reviewers see submitted levels in a staff queue, where they can mark each one as sent, rejected, or handled with another specific reason.
 
-## Main Slash Commands
+Avenue Guard also checks Geometry Dash level information before a request reaches staff. It validates level IDs, checks whether a level appears to exist, detects whether a showcase may be required, and can warn reviewers when a level seems rated or suspicious. This does not replace human judgment, but it saves staff time and catches obvious issues early.
 
-Command options include Discord-side descriptions for confusing fields such as request limits, close timers, scheduled opening time, day of month, filters, message IDs, and target members.
+## Weekly Activity Rewards
 
-- `/tracking top` shows the current weekly leaderboard.
-- `/tracking me` shows your weekly count and rank.
-- `/tracking reset` resets this week's tracking data.
-- `/tracking force_dm` manually sends a weekly request DM, even to members excluded from normal tracking or during a disabled automatic reward week, and logs the outcome.
-- `/tracking disable_reward` disables the automatic weekly request reward for the current tracking week.
-- `/tracking enable_reward` re-enables the automatic weekly request reward for the current tracking week.
-- `/bot health` shows a compact live health report.
-- `/bot config_check` checks configured channels, roles, request template variables, and `responses.json`.
-- `/bot doctor` runs deep permission diagnostics.
-- `/bot impact` generates an owner-only community impact and forecast report with Markdown, CSV, trend CSV, breakdown CSV, and JSON exports.
-- `/bot backup` creates a zipped database backup in the configured backup channel.
-- `/bot storage` shows database storage and backup status.
-- `/server_icon status` shows the server icon rotation mode, interval, current image, and configured URLs.
-- `/server_icon mode mode:<random|linear|disabled>` changes automatic server icon rotation mode.
-- `/server_icon add url:<url>`, `/server_icon replace number:<n> url:<url>`, and `/server_icon remove number:<n>` manage configured server icon URLs.
-- `/server_icon set number:<n>` changes to a specific configured server icon immediately.
-- `/server_icon next` changes to the next configured server icon immediately.
-- `/requests pending scope:<optional> status:<optional> wave:<optional>` shows filtered live and weekly request reviews.
-- `/requests history message_id:<optional> user_id:<optional> wave:<optional>` shows the edit audit trail for a live-wave request.
-- `/requests repair` runs request-system recovery and message refresh tasks.
-- `/refresh-request-button` refreshes or recreates the live request button.
-- `/open-requests number:<optional> time:<optional> when:<optional> day:<optional> type:<optional> message:<optional>` opens or schedules a request wave.
-- `/pending-openings action:<list|edit|delete> opening_id:<optional> message:<optional>` manages scheduled request openings and shows an interactive management panel by default.
-- `/edit-request` lets a user edit their current pending live-wave request during the edit window.
-- `/close-requests` closes the active request wave.
-- `/requests-are` shows whether requests are currently open or closed.
-- `/ticket close` closes the current ticket channel.
-- `/ticket status status:<waiting_user|waiting_staff|resolved>` updates the current ticket status.
-- `/ticket transcripts user:<optional> ticket_id:<optional>` searches saved ticket transcripts.
-- `/forum required_word` views or changes the forum required word. Discord administrators only.
-- `/resync` reloads config and response rules without restarting.
-- `/restart` flushes buffered tracking/daily stats, then exits the bot so the host can restart it.
-- `/dance`, `/rock-paper-scissors`, `/gambling` are public fun commands.
+The bot tracks eligible weekly activity and can reward active members with a weekly request opportunity. It does this carefully: it skips configured roles and channels, avoids counting obvious low-effort farming patterns, and stores activity history so weekly rewards are not based only on memory or screenshots.
 
-## Required-Word Forum Enforcement
+When a member earns a weekly request, Avenue Guard can contact them privately, guide them through the claim process, and send the submitted level into the same review workflow used by normal request waves. That means staff do not need to learn two separate review systems.
 
-Required-word checks live in `forum_first_message.entries[]` in `config.json`.
+The weekly system also tracks streaks, so members who stay active across multiple weeks can be recognized. This helps the server reward consistent participation instead of only one-time bursts of activity.
 
-Example:
+## Help, Reports, Appeals, And Tickets
 
-```json
-{
-  "forum_channel_id": "1104487618026143754",
-  "required_word": "cubical",
-  "required_word_match_mode": "contains",
-  "missing_required_word_dm": "Your thread \"{thread_name}\" was removed because it did not include \"{required_word}\".",
-  "required_word_delete_delay_seconds": 5,
-  "templates": {
-    "default": {
-      "title": "Make sure your collab follows our format!",
-      "description": "Your collab must have a name, theme, song, appeal, and purpose!",
-      "color": "blurple"
-    }
-  }
-}
-```
+Avenue Guard includes an in-DMs help system. Members can open a private help menu, search FAQ entries, check basic status information, submit appeals, report users, report bot issues, request transcripts, or create a private staff ticket.
 
-`missing_required_word_dm` supports:
-- `{required_word}`
-- `{thread_name}`
-- `{guild}`
+The help flow is designed to reduce confusion. Before opening a ticket, the bot can suggest relevant FAQ entries. If the member still needs help, the bot can create a private channel between the member and staff. Tickets have statuses such as waiting for user, waiting for staff, and resolved, so staff can understand what is happening at a glance.
 
-To change the word without editing files, use:
+When a ticket closes, Avenue Guard saves a transcript before deleting the channel. It can also ask for satisfaction feedback, which helps measure whether support workflows are actually helping members. This makes tickets more accountable and easier to review later.
 
-```text
-/forum required_word word:cubical
-```
+## Forum And Message Organization
 
-To use stricter matching:
+Busy Discord servers can become messy quickly. Avenue Guard helps keep important instructions visible through sticky notices and forum reminders. In selected channels, the bot can repost a reminder so members do not miss important rules or formats.
 
-```text
-/forum required_word word:cubical match_mode:whole_word
-```
+For forum channels, Avenue Guard can send a first-message reminder when a new post is created. It can also enforce a required word or format marker in certain forum posts. If a thread does not follow the required format, the bot can DM the author, delete the thread, and log what happened for staff.
 
-If multiple forum channels are configured, provide the forum channel ID:
+This is especially useful for channels where structure matters, such as collabs, feedback, or request-related spaces. The goal is not to punish people randomly; it is to keep high-traffic areas understandable and useful.
 
-```text
-/forum required_word word:cubical forum_channel_id:1104487618026143754
-```
+## Moderation Guardrails
 
-Use `off`, `disable`, `none`, or `clear` as the word to disable enforcement for that forum.
+Avenue Guard includes small moderation automations for repeated issues. For example, it can watch specific channels where only certain users should post. If someone posts or reacts where they should not, the bot can remove the action and apply a configured restriction role.
 
-## Configuration Files
+It can also send configurable DMs when users receive certain roles. That matters because moderation actions are clearer when users understand what changed and what to do next.
 
-- `config.json` controls guild IDs, roles, channels, live request waves, weekly tracking, tickets, sticky messages, forum reminders, role DMs, fun rewards, help menu FAQ, server icon rotation, persistent database storage, automatic database backups, background summaries, and impact report exports.
-- `responses.json` controls automatic message responses.
-- The configured SQLite path stores persistent bot data such as live request waves, request submissions, request edit audits, GD validation cache, weekly counts, help submissions, tickets, cooldowns, transcript pointers, reminders, daily stats, impact snapshots, and database backup records.
+These guardrails are intentionally narrow. They are not meant to replace staff judgment. They handle repetitive, predictable cases so staff can focus on situations that actually need human attention.
 
-### Database And Backup Config
+## Admin Tools And Reliability
 
-Database storage lives under `database` in `config.json`.
+Behind the scenes, Avenue Guard has several tools for keeping itself healthy. It can show an admin dashboard, check configuration issues, diagnose missing permissions, create database backups, restore from uploaded database copies, and generate impact reports.
 
-- `path`: optional SQLite database path. Leave blank to auto-detect `/var/data/avenue-guard/bot.db` when a Render Persistent Disk is mounted, then fall back to `data/bot.db` if it is not writable.
-- `AVENUE_GUARD_DB_PATH`: optional environment variable that overrides `database.path`.
-- `backups.enabled`: enables scheduled zipped SQLite backups.
-- `backups.channel_id`: where scheduled and manual `/bot backup` files are posted.
-- `backups.interval_hours`: how often automatic backups are posted.
-- `/bot storage` is the fastest way to verify whether the running bot is using the expected path.
+This is important because Discord bots depend on many moving parts: channels, roles, permissions, messages, buttons, background tasks, and persistent data. If any of those drift, staff need a way to understand what broke and how to recover.
 
-### Impact Report Config
+The bot stores important workflow state persistently. That includes request waves, ticket data, transcripts, weekly tracking, help submissions, request reviews, validation cache, backups, restore history, and impact snapshots. In normal language: the bot tries very hard not to forget the important parts of the server's operations.
 
-Impact reports live under `impact` in `config.json`.
+## Community Impact Reports
 
-- `report_channel_id`: where `/bot impact` posts the persistent Markdown, CSV, trend CSV, breakdown CSV, and JSON attachments. If empty, the bot falls back to `channels.general_logging_channel_id`.
-- `allowed_user_ids`: the only users allowed to run `/bot impact`, `/bot backup`, and `/bot storage`. If empty, the bot falls back to admin/owner role checks.
-- `/bot impact` stores the same report payload in `impact_snapshots`, so the bot keeps a database copy even after posting the files.
-- The CSV exports are designed for direct import into Google Sheets.
+Avenue Guard can generate reports that summarize the bot's community impact. These reports can include activity trends, support volume, request throughput, ticket history, review progress, command usage, and other operational signals.
 
-### Server Icon Rotation Config
+The point is not just to say "the bot is useful." The point is to make its usefulness measurable. For a community project, that matters. It shows how many workflows the bot has helped coordinate and gives staff a clearer picture of where the server is active, where help is needed, and how the community is changing over time.
 
-Server icon rotation lives under `background.server_icon_rotation` in `config.json`.
+## Server Personality
 
-- `mode`: `disabled`, `linear`, or `random`.
-- `interval_seconds`: time between automatic changes, with a minimum of 300 seconds.
-- `urls`: direct image URLs used for the server icon.
-- `current_index`, `current_url`, and `last_changed_ts`: saved state used by the rotation loop.
-- `last_error` and `last_error_ts`: the most recent rotation failure shown in `/server_icon status`.
+Not everything in the bot is serious. Avenue Guard also includes small community features, like fun commands and server icon rotation. These features are not the core of the system, but they help the bot feel like part of the server rather than just a silent machine that deletes messages and posts logs.
 
-### Level Request Config
+That balance is part of the idea behind Avenue Guard. It should be useful, dependable, and structured, but it should still feel like it belongs in GD Avenue.
 
-The live request system lives under `level_requests` in `config.json`.
+## How The Bot Is Built, Without Revealing The Private Code
 
-Set these before opening requests:
-- `request_channel`: where the public request button embed goes.
-- `level_requested`: where submitted level request embeds go for review.
-- `sent_channel`: where accepted/sent result embeds go.
-- `rejected_channel`: where rejected and `Other` result embeds go.
-- `required_role_ids`: roles allowed to request. Empty means everyone can request unless banned.
-- `has_requested_role_id`: role used for users who already passed the first-request prompt.
-- `request_banned_role_id`: role assigned by the `I will` choice and blocked from requesting.
-- `reviewer_role_ids`: roles allowed to use request review controls and reviewer filters.
-- `request_post_close_edit_minutes`: how long users may keep editing pending requests after the wave closes.
-- `open_announcement`: controls the message sent when waves open. Blank `message` uses the default `<@&role>, requests have been opened for {condition_text}`.
-- `level_validation.enabled`: enables GDBrowser plus GD/Boomlings existence/rating/showcase checks.
-- `level_validation.cache_seconds`: how long validation warnings stay fresh before repair or the next submission refreshes them.
-- `level_validation.per_user_cooldown_seconds`, `per_user_window_seconds`, and `per_user_max_checks`: protect validation from spam.
-- `level_validation.provider_failure_threshold` and `provider_circuit_breaker_seconds`: pause failing validation providers briefly.
-- `level_validation.auto_reject_missing`: blocks the modal when enabled sources confidently agree that the ID is missing.
+The public version of this repository does not include the source code, but the architecture can still be explained safely.
 
-The same section controls the request button text, all user-facing messages, request/review/result embed templates, wave summary embed, weekly request embeds, duplicate-history warnings, validation warnings, aging fields, edit-audit counters, and final-result colors.
+Avenue Guard is built as a modular Discord bot. Each major feature area is separated into its own internal component: requests, tracking, help and tickets, forum reminders, moderation, background summaries, admin tools, and shared utilities. Those components communicate with a persistent database and a central configuration system.
 
-Validated live requests also expose compact GD details for embeds:
-- `{gd_info}`: clean preformatted difficulty, length, stars/status, and detected flags.
-- `{gd_difficulty}`, `{gd_length}`, `{gd_stars}`, `{gd_rated}`.
-- `{gd_demon}`, `{gd_platformer}`, `{gd_featured}`, `{gd_epic}`, `{gd_flags}`.
-- `{gd_level_name}` and `{gd_creator}` when the validation provider returns them.
+Configuration controls server-specific behavior such as which channels are used, which roles are allowed to do certain actions, how embeds are worded, where logs are sent, and how request waves behave. This makes the bot adaptable without hardcoding every server decision directly into the logic.
 
-## Running The Bot
+Persistent storage is used because many workflows last longer than a single bot session. A scheduled request opening, an active ticket, an unreviewed level, a weekly reward claim, or an impact report should survive a restart. Avenue Guard is designed around that expectation.
 
-1. Install dependencies:
+## Why The Code Is Private
 
-```bash
-pip install -r requirements.txt
-```
+The code is private for security and server-safety reasons. A bot like this contains workflows that could be abused if copied or studied in too much detail. Some features involve moderation behavior, staff-only review flows, server-specific assumptions, validation rules, internal recovery paths, and configuration patterns that should not be exposed publicly.
 
-2. Set the bot token:
+Keeping the source private protects GD Avenue while still allowing the project to be explained honestly. This repository exists as a public overview of what the bot does, what problems it solves, and how it supports the server.
 
-```bash
-export DISCORD_TOKEN="your-token"
-```
+## Project Summary
 
-3. Start Avenue Guard:
+Avenue Guard is a custom-built operations bot for GD Avenue. It helps the server manage level requests, reward active members, support users privately, keep forums organized, protect sensitive channels, generate useful logs, and measure community impact over time.
 
-```bash
-python main.py
-```
+The code is private, but the project itself represents a complete production-style Discord bot: persistent workflows, staff tools, scheduled automation, review queues, support systems, backups, analytics, and community-facing interactions all working together for one server.
 
-## Discord Intents And Permissions
-
-Enable these in the Discord Developer Portal:
-- Server Members Intent
-- Message Content Intent
-
-Useful bot permissions:
-- Administrator, or at minimum:
-- Manage Roles
-- Manage Channels
-- Manage Threads
-- Manage Messages
-- Read Message History
-- Send Messages
-- Embed Links
-- Attach Files
-
-## Persistence Notes
-
-SQLite must live outside Render's clearable cache/project filesystem for true persistence. Mount a Render Persistent Disk at `/var/data`, or set `AVENUE_GUARD_DB_PATH` to another durable path. If no durable path is writable, the bot falls back to `data/bot.db` so it can start, but `/bot storage` will warn that data may be lost after cache clears. Automatic zipped backups also post to Discord as a second safety net.
-
-## Local Testing
-
-Use `TEST_CHECKLIST.md` for the full server-side test flow. It covers startup, moderation, live request waves, tracking, help sessions, ticket closure, transcript requests, sticky messages, forum reminders, required-word deletion, and fun commands.
+In short: Avenue Guard is the quiet infrastructure behind a lot of GD Avenue's day-to-day organization.
