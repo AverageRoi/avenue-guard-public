@@ -68,7 +68,18 @@ This is important because our bot depends on many moving parts like channels, ro
 
 The bot stores important workflow state persistently. That includes request waves, ticket data, transcripts, weekly tracking, help submissions, request reviews, validation cache, backups, restore history, and impact snapshots. So basically, the bot should not to forget the important parts of the server's operations.
 
-We use certain methods to XXXXXX
+Some of the reliability methods behind Avenue Guard include:
+
+1. **Persistent storage for long workflows**: request waves, tickets, weekly rewards, scheduled openings, reviews, transcripts, backups, and impact snapshots are stored so they can survive restarts.
+2. **Atomic counters and protected state updates**: ticket numbers, request counts, duplicate checks, and review transitions are handled carefully so two users or two reviewers cannot accidentally claim the same state at the same time.
+3. **Persistent Discord components**: buttons and menus are registered again after restarts, so old request buttons, review buttons, ticket controls, and help-menu controls can still route to the correct workflow.
+4. **Pre-action validation**: the bot checks roles, channels, permissions, level IDs, URLs, request state, and duplicate submissions before allowing important actions to continue.
+5. **External validation with caching and fallbacks**: Geometry Dash level checks use external sources, cached results, cooldowns, and provider backoff so one failing service does not break the whole request system.
+6. **Recovery and repair commands**: staff can refresh request buttons, rebuild summaries, relock reviewed requests, check storage, run diagnostics, create backups, and restore from uploaded database copies.
+7. **Audit trails and logs**: request edits, reviewed levels, weekly reward events, ticket transcripts, forum deletions, admin actions, backups, restores, and impact reports all leave records.
+8. **Safe backup/restore flow**: the bot can create zipped database backups, validate uploaded database copies, migrate restored data, and log the recovery.
+9. **Rate limits and cooldowns**: activity tracking, help flows, validation checks, fun commands, and auto-responses use limits to reduce spam and accidental overload.
+10. **Config checks and permission diagnostics**: the bot can scan for missing roles, missing channels, bad template variables, broken permissions, and unhealthy background tasks before they become bigger problems.
 
 ## Impact Reports
 
@@ -93,7 +104,40 @@ Configuration controls server specific behavior such as which channels are used,
 Persistent storage is used because many workflows last longer than a single bot session. All of the information SHOULD survive a restart.
 
 Real server architecture:
-YYYY
+
+| Area | What it contains | Purpose |
+|---|---|---|
+| `main.py` | Bot startup, configuration loading, database connection, cog loading, keepalive startup, persistent view registration | Starts the bot and wires every major system together |
+| `cogs/` | Feature modules such as requests, tracking, help/tickets, moderation checks, sticky/forum automation, background jobs, commands, and message responses | Keeps each major bot workflow separated instead of putting everything in one giant file |
+| `utils/` | Shared helpers for config, database access, checks, safe mentions, time handling, transcripts, validation, persistent views, server icons, and error logging | Holds reusable logic used by multiple parts of the bot |
+| `config.json` | Server-specific settings for roles, channels, request behavior, help text, embeds, backups, summaries, and permissions | Lets the bot be customized without changing source code every time |
+| `responses.json` | Configurable message-triggered auto-responses | Controls simple automatic replies outside the main Python logic |
+| `data/` | Local database fallback location | Used when no persistent production path is available |
+| `docs/` | Private manuals and generated documentation | Used for understanding and maintaining the bot privately |
+| `scripts/` | Documentation and maintenance scripts | Helps generate internal documentation and supporting files |
+| `requirements.txt` | Runtime dependencies | Defines the packages needed to run the bot |
+| `TEST_CHECKLIST.md` | Manual testing checklist | Helps verify important Discord workflows after changes |
+
+In a simplified scheme, the flow looks like this:
+
+```text
+Discord events / slash commands / buttons
+        |
+        v
+main.py loads the bot and routes work into cogs
+        |
+        v
+cogs handle feature-specific workflows
+        |
+        v
+utils provide shared helpers and database access
+        |
+        v
+persistent storage remembers long-running state
+        |
+        v
+Discord receives embeds, logs, tickets, reviews, DMs, and summaries
+```
 
 ## Why The Code Is Private
 
