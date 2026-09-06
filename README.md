@@ -697,36 +697,106 @@ The production application is operated for GD Avenue rather than packaged as a g
 
 # What I learned
 
-Avenue Guard changed how I think about software.
+Avenue Guard taught me that the difficult part of a production system is often not implementing an action, but defining **what must still be true before and after that action**.
 
-At the beginning, I mostly thought about failures as individual bugs:
+The level-request system made this especially clear. A request slot should only disappear after a valid submission. The same member should not submit twice in one wave. Two reviewers should not be able to independently finalize the same request. A restart should not make an existing review button lose the state it belongs to.
 
-1. something breaks;
-2. find the error;
-3. fix it;
-4. deploy again.
+I started thinking about those requirements as **invariants**, rather than as individual bug fixes.
 
-Operating software used by real people made that model insufficient.
+That changed the way I built later parts of Avenue Guard.
 
-A failed request affects a member.
+### State has to outlive the process
 
-Lost ticket state creates work for staff.
+Early on, it was easy to think of the bot's current Python process as the system.
 
-A dependency outage should not necessarily take down the surrounding workflow.
+It is not.
 
-A deployment should not make an existing button forget what it does.
+A request wave, ticket, scheduled opening, weekly reward, or staff review can last longer than one deployment. Once that became obvious, persistence stopped being just "save some data to a database."
 
-That pushed the project toward questions I had not originally been designing around:
+The important question became:
 
-- How does state survive?
-- What happens if two actions arrive together?
-- Can a workflow be resumed?
-- Can staff determine what happened afterwards?
-- Can we detect configuration drift before users do?
-- Can one dependency fail without breaking everything around it?
-- How do we recover when production state and the Discord environment stop matching?
+> **What information is necessary to reconstruct the workflow after the process disappears?**
 
-Those questions became more important to Avenue Guard than any individual command.
+That is why Avenue Guard persists things such as request state, ticket state, reviews, scheduled openings, reward claims, transcripts, and validation data rather than only storing final results.
+
+Moving production state to Turso/libSQL also made me think about the difference between **local convenience and durable state**. The bot can work through an embedded local replica, but the important information cannot depend on an ephemeral hosting filesystem surviving.
+
+### External APIs should be treated as unreliable
+
+The level validator gave me a very concrete lesson in dependency design.
+
+In one real request shown in this repository, one Geometry Dash provider returned an **HTTP 403** while another provider successfully returned the level.
+
+If validation had been written around the assumption that one provider would always work, that request workflow would have failed.
+
+Instead, the system now uses caching, retries, cooldowns, provider backoff, and fallback behaviour.
+
+The lesson was not simply "add error handling."
+
+It was:
+
+> **A dependency failing should not automatically become the user's workflow failing.**
+
+That is now how I try to think about external systems.
+
+### Concurrency problems can exist even in a Discord bot
+
+Avenue Guard also forced me to think about operations that look sequential to a user but are not necessarily sequential in the application.
+
+Two people can submit at almost the same time.
+
+Two reviewers can press buttons close together.
+
+Two actions can try to allocate a ticket number or update the same workflow state.
+
+That made counters, duplicate checks, request limits, and review transitions into more than simple variables. They became shared state that needed protected updates.
+
+This was one of the first projects where I understood race conditions as a practical product problem rather than just something described in a computer-science lesson.
+
+### A restart is a normal event, not an exceptional one
+
+Persistent Discord components changed another assumption I had.
+
+A button can remain in Discord after the process that created it no longer exists.
+
+So a deployment cannot mean:
+
+> "Everything starts again."
+
+The new process has to understand interactions created by the previous one.
+
+Re-registering persistent views and keeping enough workflow state to route old buttons correctly made me think of restarts as part of the normal lifecycle of the system rather than as failures.
+
+### Observability changes debugging
+
+As Avenue Guard became larger, "look at the traceback when something breaks" stopped being enough.
+
+The admin dashboard, configuration checks, permission diagnostics, background-task status, impact reports, and Bot Doctor came from needing to answer questions such as:
+
+- Is the database reachable?
+- Did all feature modules load?
+- Are background jobs still running?
+- Is a required role or channel missing?
+- Are persistent views registered?
+- Is the problem in Discord configuration, storage, or application logic?
+
+The Bot Doctor shown in this repository checks multiple parts of the live system, and the production history currently contains more than a hundred recorded backups.
+
+The important lesson was that **debuggability is something you design before the failure happens**.
+
+A system that tells you what state it is in is much easier to maintain than one that only tells you that something crashed.
+
+### The biggest change
+
+When I started Avenue Guard, I mostly asked:
+
+> **How do I make this feature work?**
+
+Now I am much more likely to ask:
+
+> **What can fail, what state could be left behind, and what must remain true afterwards?**
+
+That shift—from implementing successful actions to designing recoverable state transitions—is probably the most important thing Avenue Guard taught me.
 
 ---
 
