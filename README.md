@@ -736,11 +736,12 @@ As the system grew, a traceback alone could no longer answer the useful question
 
 The admin dashboard, configuration checks, background-task status, and Bot Doctor came from needing the application to describe its own state before something visibly failed for users.
 
-The main engineering change was therefore fairly specific:
+The main engineering change was therefore this idea:
 
 > **I stopped designing only for the successful action and started designing for the state left behind when that action is interrupted, duplicated, retried, or resumed later.**
 
 That is probably the most important thing Avenue Guard changed about the way I build software.
+
 ---
 
 # About the source code
