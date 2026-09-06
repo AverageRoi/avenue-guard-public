@@ -1,8 +1,8 @@
 # Avenue Guard
 
-**Production community-operations infrastructure for Geometry Dash Avenue, a 3,155-member Discord community.**
+**Production community infrastructure for Geometry Dash Avenue, a 3,155-member Discord community.**
 
-Avenue Guard is a custom system for running long-lived community workflows: level submissions, activity rewards, member support, tickets, forum organization, moderation guardrails, staff operations, recovery, and operational analytics.
+Avenue Guard runs the recurring workflows behind GD Avenue: level submissions, activity rewards, member support, tickets, forum organization, moderation guardrails, staff operations, recovery, and operational analytics.
 
 **Discord is the interface. The harder problem is state.**
 
@@ -26,26 +26,46 @@ Avenue Guard is built around those problems.
 
 ---
 
-## What Avenue Guard does
+## Why I built Avenue Guard
 
-Avenue Guard started as a way to automate repetitive work inside GD Avenue.
+Running a community of several thousand people creates a surprising amount of recurring work.
 
-It gradually became a shared operations layer connecting systems that would otherwise have to be handled manually or through several disconnected bots.
+Level submissions have to be collected and reviewed. Members need support. Tickets need states and histories. Forum posts have formatting requirements. Weekly participation has to be tracked. Staff actions need records. Important workflows should not disappear because a process restarts or an external service becomes unavailable.
 
-### System overview
+Avenue Guard began as a way to automate some of that repetitive work.
+
+Over time, it became part of GD Avenue's infrastructure.
+
+As that happened, the main engineering question changed from:
+
+> **Can the bot perform this action?**
+
+to:
+
+> **Can the entire workflow remain consistent when something fails halfway through?**
+
+That question now shapes much of the project.
+
+---
+
+# What Avenue Guard runs
+
+Avenue Guard is not primarily a moderation bot and it is not just a collection of slash commands.
+
+It connects several parts of the community that would otherwise require manual work or separate systems.
 
 | System | What Avenue Guard handles |
 | --- | --- |
 | **Level requests** | Request waves, scheduled openings, structured forms, validation, duplicate protection, editing, review queues and outcomes |
-| **Weekly rewards** | Activity tracking, eligibility filtering, anti-farming checks, streak history, private reward claims and weekly requests |
-| **Help & support** | FAQ discovery, reports, appeals, bot issues, status information, transcript requests and private staff escalation |
-| **Tickets** | Creation, routing, persistent states, assignment/triage, closure, transcripts and satisfaction feedback |
-| **Forum organization** | First-message reminders, required-format checks, user notifications, thread cleanup and staff logging |
-| **Moderation guardrails** | Narrow channel protections, reaction/message controls, restriction roles and explanatory DMs |
-| **Persistence & recovery** | Durable workflow state, persistent components, backups, restore tooling and repair commands |
-| **Operations** | Admin dashboard, diagnostics, configuration checks, permission checks and background-task monitoring |
-| **Telemetry** | Activity history, request statistics, support metrics, impact reports, trends and machine-readable exports |
-| **Community utilities** | Sticky notices, configurable auto-responses, server-icon rotation and smaller interactive commands |
+| **Weekly rewards** | Activity tracking, eligibility filtering, anti-farming checks, streak history, private claims and rewarded requests |
+| **Help & support** | FAQ discovery, reports, appeals, bot issues, status information, transcript requests and staff escalation |
+| **Tickets** | Creation, routing, persistent states, triage, closure, transcripts and satisfaction feedback |
+| **Forum organization** | First-message reminders, required-format checks, user notifications, thread cleanup and staff logs |
+| **Moderation guardrails** | Narrow channel protections, message/reaction controls, restriction roles and explanatory DMs |
+| **Persistence & recovery** | Durable workflow state, persistent components, backups, diagnostics and repair tools |
+| **Operations** | Admin dashboard, configuration checks, permission diagnostics and background-task monitoring |
+| **Telemetry** | Activity history, request statistics, support metrics, impact reports, trends and exports |
+| **Community utilities** | Sticky notices, configurable auto-responses, icon rotation and smaller interactive commands |
 
 The goal is not maximum automation.
 
@@ -55,7 +75,7 @@ It is to automate the parts of community operations that are **predictable enoug
 
 # Design goals
 
-Avenue Guard has a few principles that now influence most of its design.
+A few principles now influence most of Avenue Guard's design.
 
 ### 1. Long-running state should survive restarts
 
@@ -63,7 +83,7 @@ Requests, tickets, reward claims, reviews and scheduled actions should not disap
 
 ### 2. Failure should be recoverable
 
-A temporary API failure, stale Discord object, interrupted task or deployment should not require staff to reconstruct an entire workflow manually.
+A temporary API failure, stale Discord object, interrupted background task or deployment should not require staff to reconstruct an entire workflow manually.
 
 ### 3. Important state changes should be protected
 
@@ -81,22 +101,20 @@ Important actions leave logs or audit records, and staff have tools to inspect c
 
 ---
 
-# Core systems
+# Level request system
 
-## Level request orchestration
-
-One of Avenue Guard's largest systems manages Geometry Dash level submissions from opening a request window to the final staff decision.
+One of Avenue Guard's largest systems manages Geometry Dash level submissions from the opening of a request window to the final staff decision.
 
 Staff can open request waves:
 
 - for a fixed number of successful submissions;
-- for a specific amount of time;
+- for a specified period;
 - indefinitely;
 - or through a scheduled opening.
 
-A slot is consumed only after a form is successfully submitted. Merely pressing the request button does not waste one.
+A slot is consumed only after a form is successfully submitted. Simply pressing the request button does not waste one.
 
-Members submit structured information through Discord components rather than free-form messages.
+Members submit structured information through Discord components rather than unstructured messages.
 
 The request system then handles:
 
@@ -112,56 +130,65 @@ The request system then handles:
 - explicit review outcomes;
 - and request edit/review history.
 
-### External validation
+## External validation
 
-Before a request reaches staff, Avenue Guard can validate the level against external Geometry Dash data providers.
+Before a request reaches staff, Avenue Guard can check Geometry Dash data against external providers.
 
-The validation layer can check whether the level exists, retrieve metadata, identify already-rated levels and surface information that may need extra review.
+The validation layer can:
 
-It is also designed around unreliable dependencies.
+- verify whether a level appears to exist;
+- retrieve level metadata;
+- identify already-rated levels;
+- check information relevant to showcase requirements;
+- cache successful results;
+- and surface unusual metadata for staff review.
 
-Caching, retries, cooldowns, provider backoff and fallback behaviour prevent one unavailable service from automatically breaking the entire request workflow.
+External providers are treated as dependencies that can fail.
 
-The example below captures that directly: one provider returns **HTTP 403** while the fallback provider successfully supplies the level.
+Caching, retries, cooldowns, provider backoff and fallback behaviour help prevent one unavailable service from breaking the entire request workflow.
+
+The real request shown below demonstrates that directly: one provider returns **HTTP 403** while another successfully supplies the level information.
 
 ![End-to-end Avenue Guard level request workflow](assets/level-request-flow.png)
 
 *One request moving from an open wave through structured submission, external validation and staff review.*
 
+The request system is deliberately tailored to how GD Avenue actually works rather than trying to reproduce every feature of a generic request bot.
+
 ---
 
-## Weekly activity rewards
+# Weekly activity rewards
 
 Avenue Guard runs a separate system for rewarding sustained community participation.
 
 The activity pipeline roughly follows three stages:
 
-1. exclude configured channels and roles;
-2. filter known activity-farming patterns;
-3. store eligible activity in weekly history.
+1. configured roles and channels are excluded;
+2. obvious activity-farming patterns are filtered;
+3. eligible activity is stored in weekly history.
 
 The result is not simply a raw message leaderboard.
 
-The system keeps longitudinal activity data and can recognize members who remain consistently active across multiple weeks.
+The system keeps longitudinal activity data, can recognize repeated high-performing weeks, and keeps reward claims separate from normal public request waves.
 
-Qualifying members can receive a private weekly level-request opportunity with a limited claim window.
+Qualifying members receive a private level-request opportunity with a limited claim window.
 
 ![Weekly activity reward generated by Avenue Guard](assets/weekly-request-earned.png)
 
-Weekly rewards remain separate from normal public request waves, but once claimed, the resulting submission can enter the same broader review infrastructure.
+Once claimed, the resulting level can enter the same broader review infrastructure used by other requests.
 
-The latest production snapshot included:
+The September 6 production snapshot included:
 
 - **416 members** with tracked weekly activity;
 - **10 weeks** of activity history;
-- **6 reward claim records**;
+- **6 weekly reward claim records**;
 - **59 weekly DM log events**;
 - tracked streaks;
-- and anti-farm events.
+- and recorded anti-farm events.
 
 ---
 
-## Member help, reports and appeals
+# Member help, reports and appeals
 
 Avenue Guard also acts as the private entry point for several member-support workflows.
 
@@ -169,41 +196,49 @@ Members can use its DM interface to:
 
 - search FAQ entries;
 - check basic status information;
+- ask for server help;
+- ask about level requests;
 - submit an appeal;
 - report another member;
-- report a bot problem;
+- report a bot issue;
 - request eligible transcripts;
-- obtain ban-related information where applicable;
-- or contact staff directly.
+- obtain configured ban-related information;
+- or escalate to staff.
 
-The help flow can suggest relevant FAQ information before escalating a question, reducing unnecessary staff pings while still providing a route to a person when needed.
+The help flow can surface relevant FAQ information before opening a ticket, reducing unnecessary staff pings while still providing a route to a person when needed.
 
 ![Avenue Guard Help & Support menu](assets/01-help-menu.png)
 
-Requests that need a person can be categorized before escalation:
+Requests that need human assistance can be categorized before escalation:
 
 ![Avenue Guard support routing](assets/02-contact-routing.png)
 
 ---
 
-## Stateful ticket system
+# Stateful ticket system
 
-When private staff assistance is required, Avenue Guard can create a dedicated support channel and convert the help request into a tracked ticket.
+When private staff assistance is required, Avenue Guard can create a dedicated channel and turn the help request into a tracked ticket.
 
 ![Avenue Guard ticket creation](assets/03-ticket-created.png)
 
 Tickets use explicit workflow states such as:
 
-`Waiting for staff` → `Waiting for user` → `Resolved`
+```text
+Waiting for staff
+        ↓
+Waiting for user
+        ↓
+Resolved
+```
 
-This gives staff an actual queue and lifecycle rather than a collection of temporary channels with no shared state.
+That gives staff a real lifecycle instead of a collection of temporary channels with no shared state.
 
-Avenue Guard can track and support:
+Avenue Guard can track:
 
 - ticket IDs;
-- topics;
+- support topics;
 - status transitions;
-- staff/user waiting state;
+- whether the next action belongs to staff or the member;
 - closure;
 - transcript generation;
 - later review;
@@ -213,11 +248,11 @@ A real support interaction:
 
 ![Real Avenue Guard support interaction](assets/04-ticket-conversation.png)
 
-When the ticket closes, Avenue Guard saves a transcript before the temporary channel is removed:
+When a ticket closes, Avenue Guard can save its transcript before the temporary channel is removed:
 
 ![Avenue Guard saved ticket transcript](assets/05-ticket-transcript.png)
 
-The latest production snapshot recorded:
+The September 6 production snapshot recorded:
 
 | Support metric | Value |
 | --- | ---: |
@@ -229,47 +264,48 @@ The latest production snapshot recorded:
 
 ---
 
-## Forum and message organization
+# Forum and message organization
 
-A large server creates another kind of repetitive work: keeping instructions visible and keeping structured channels actually structured.
+Large Discord servers also accumulate repetitive organizational work.
 
-Avenue Guard includes tools for this as well.
+Avenue Guard includes several systems for keeping important information visible and structured channels actually structured.
 
-### Sticky notices
+## Sticky notices
 
-Selected channels can maintain recurring or sticky instructions so important information does not disappear far above the current conversation.
+Selected channels can maintain recurring notices so important instructions do not disappear far above the current conversation.
 
-### Forum reminders
+## Forum reminders
 
 When a new forum thread is created, Avenue Guard can post the appropriate first-message instructions.
 
-### Required-format enforcement
+## Required-format enforcement
 
 Some forum areas require a particular marker, word or format.
 
 Avenue Guard can:
 
-1. check the initial post;
-2. notify the author privately if the requirement is missing;
-3. remove the invalid thread when configured;
-4. and record what happened for staff.
+1. check a new thread;
+2. identify whether the required format is present;
+3. privately notify the author when it is missing;
+4. remove the invalid thread when configured to do so;
+5. and record the event for staff.
 
-This is particularly useful in areas such as collaboration channels where the same formatting problems otherwise create repeated manual work.
+This is especially useful in areas such as collaboration channels where the same formatting problems would otherwise create repeated manual work.
 
 ---
 
-## Moderation guardrails
+# Moderation guardrails
 
-Avenue Guard is **not primarily a moderation bot**, but it includes narrowly scoped protections for recurring situations where the correct action is predictable.
+Avenue Guard is **not primarily a moderation bot**, but it includes narrowly scoped protections for situations where the correct action is predictable.
 
 Examples include:
 
-- watching channels where only specific users should interact;
+- monitoring channels where only particular users should interact;
 - removing unauthorized messages;
 - removing unauthorized reactions;
 - applying configured restriction roles;
-- sending a DM explaining why a restriction was applied;
-- and logging the event.
+- sending DMs explaining automated restrictions;
+- and logging the resulting action.
 
 These checks are intentionally narrow.
 
@@ -279,15 +315,15 @@ The point is to automate clear-cut cases without trying to automate ambiguous mo
 
 # Reliability and persistence
 
-This is the part of Avenue Guard that grew most as the project moved from "bot" to production system.
+This is the part of Avenue Guard that grew most as the project moved from a bot with features to a production system.
 
 ## Turso / libSQL
 
 Production state is stored through **Turso/libSQL**.
 
-The system keeps SQLite-compatible development and access patterns while synchronizing important state to durable remote storage instead of depending entirely on a host's temporary local filesystem.
+This keeps SQLite-compatible development and access patterns while allowing important operational data to live outside an ephemeral hosting filesystem.
 
-Avenue Guard uses a local embedded replica for fast local access while keeping the production source of truth durable.
+Avenue Guard uses a local embedded replica for fast local access while synchronizing important state to durable remote storage.
 
 Persistent data includes areas such as:
 
@@ -305,22 +341,22 @@ Persistent data includes areas such as:
 - restore history;
 - and impact snapshots.
 
-The database layer also performs startup checks and includes handling for temporary sync failures and unusable local storage paths.
+The database layer also performs startup checks and includes handling for temporary Turso/libSQL synchronization errors and unusable local storage paths.
 
 ---
 
 ## Protected state changes
 
-Several workflows have operations where race conditions matter.
+Several workflows contain operations where simultaneous actions matter.
 
 For example:
 
 - two members should not consume the same final request slot;
-- duplicate submissions should not slip through simultaneous checks;
-- ticket IDs should remain unique;
+- duplicate submissions should not pass through simultaneous checks;
+- ticket IDs need to remain consistent;
 - and two reviewers should not independently finalize the same request state.
 
-Avenue Guard therefore treats important counters and transitions as protected state updates rather than simple message actions.
+Avenue Guard therefore protects important counters and state transitions rather than treating them as unrelated message responses.
 
 ---
 
@@ -333,17 +369,17 @@ Avenue Guard registers persistent components again during startup so older:
 - request buttons;
 - review controls;
 - ticket controls;
-- and help menus
+- and help interfaces
 
-can continue routing to the workflow they belong to after deployments and restarts.
+can continue routing to the workflow they belong to after deployments or restarts.
 
 ---
 
 ## Pre-action validation
 
-Important actions are checked before they are allowed to modify state.
+Important actions are checked before they are allowed to modify workflow state.
 
-Depending on the workflow, Avenue Guard can validate:
+Depending on the system, Avenue Guard can validate:
 
 - roles;
 - channels;
@@ -355,13 +391,29 @@ Depending on the workflow, Avenue Guard can validate:
 - configuration;
 - and required Discord objects.
 
-The intention is to catch predictable failures before they become corrupted workflow state.
+The intention is to catch predictable failures before they become corrupted state.
+
+---
+
+## External-service resilience
+
+Geometry Dash validation depends on services Avenue Guard does not control.
+
+Avenue Guard therefore uses mechanisms including:
+
+- cached results;
+- retries;
+- cooldowns;
+- provider backoff;
+- and fallbacks.
+
+The objective is graceful degradation rather than assuming every dependency will always be available.
 
 ---
 
 # Recovery and operational tooling
 
-Production systems need ways to answer two questions:
+Production systems eventually need to answer two questions:
 
 > **What is wrong?**
 
@@ -375,54 +427,54 @@ Avenue Guard includes staff tooling for both.
 
 ![Avenue Guard live admin dashboard](assets/admin-dashboard.png)
 
-The dashboard exposes live information including:
+The live dashboard exposes information such as:
 
 - Turso connectivity;
 - database latency;
 - loaded feature modules;
-- request-wave status;
+- current request-wave state;
 - pending reviews;
 - open tickets;
-- weekly tracking state;
+- weekly tracking status;
 - anti-farm events;
 - and background-task status.
 
 ## Bot Doctor
 
-A separate diagnostic system performs deeper checks across configured production workflows.
+A separate diagnostic system performs deeper checks across configured workflows.
 
-![Avenue Guard Bot Doctor](assets/bot-doctor.png)
+![Avenue Guard Bot Doctor diagnostics](assets/bot-doctor.png)
 
-The run shown above completed **23 checks with 0 issues**, including checks across request infrastructure, logs, reports and transcripts.
+The diagnostic run shown above completed **23 checks with 0 issues**, including checks across request infrastructure, logs, reports and transcript-related systems.
 
-The value of Bot Doctor is not the green screenshot itself.
+The useful part is not that this particular screenshot is green.
 
-It is having a repeatable diagnostic path when something is *not* green.
+It is having a repeatable diagnostic path when something is not.
 
 ---
 
 ## Recovery and repair commands
 
-Staff tooling can also perform or assist with recovery operations such as:
+Staff tools can also perform or assist with operations such as:
 
 - refreshing request buttons;
-- rebuilding summaries;
+- rebuilding request summaries;
 - relocking reviewed requests;
 - checking database/storage state;
 - validating configuration;
 - diagnosing missing permissions;
 - creating backups;
-- and restoring compatible uploaded local database copies when using local SQLite.
+- and restoring compatible uploaded local database copies when operating with local SQLite.
 
 ---
 
 ## Backup flow
 
-Backups form a second safety layer around the production database.
+Backups form a second safety layer around production state.
 
-The system can create zipped database backups and maintain records of backup and restore activity.
+Avenue Guard can create zipped database backups and maintain records of backup and restore activity.
 
-Where local restoration is applicable, Avenue Guard can validate an uploaded database copy, migrate restored data where necessary and record the recovery operation.
+Where local restoration is applicable, it can validate an uploaded database copy, migrate restored data when needed, and record the recovery operation.
 
 The September 6 production snapshot contained **114 recorded database backups**.
 
@@ -430,7 +482,7 @@ The September 6 production snapshot contained **114 recorded database backups**.
 
 # Auditability and safety controls
 
-Avenue Guard keeps records for many operations where later reconstruction can matter.
+Important actions leave records so staff can reconstruct what happened later.
 
 Audit/logging coverage includes areas such as:
 
@@ -444,19 +496,19 @@ Audit/logging coverage includes areas such as:
 - restores;
 - and impact-report generation.
 
-Rate limits and cooldowns are also applied to systems where repeated interactions could create spam or accidental overload, including:
+Rate limits and cooldowns are also used where repeated interactions could create spam or accidental overload, including:
 
 - activity tracking;
 - help flows;
 - external validation;
-- auto-responses;
+- configurable auto-responses;
 - and smaller interactive commands.
 
 ---
 
 # Configuration
 
-Avenue Guard is specific to GD Avenue, but it is not built by scattering server IDs and behaviour throughout every feature.
+Avenue Guard is built specifically for GD Avenue, but server-specific decisions are not all scattered through individual workflows.
 
 A central configuration layer controls things such as:
 
@@ -468,9 +520,9 @@ A central configuration layer controls things such as:
 - embeds;
 - summaries;
 - backups;
-- and where different logs are sent.
+- and log destinations.
 
-This lets server behaviour change without requiring the underlying workflow logic to be rewritten each time.
+This lets server behaviour change without requiring every workflow to be rewritten.
 
 The system can also scan for configuration problems including:
 
@@ -486,9 +538,9 @@ The system can also scan for configuration problems including:
 
 Avenue Guard does not rely only on anecdotal usage to determine whether its systems are being used.
 
-It collects operational telemetry for the workflows it manages and can generate a combined **Impact and Forecast Report**.
+It records operational telemetry and can generate a combined **Impact and Forecast Report**.
 
-The latest snapshot recorded:
+The September 6 snapshot recorded:
 
 | Metric | Value |
 | --- | ---: |
@@ -500,18 +552,20 @@ The latest snapshot recorded:
 | Slash commands recorded | **108** |
 | Voice activity recorded | **2,000 minutes** |
 | Members with tracked weekly activity | **416** |
-| Weekly history | **10 weeks** |
+| Weekly activity history | **10 weeks** |
 | Database backups | **114** |
 | 30-day command error rate | **0.0%** |
-| Current engagement signal | **Growing** |
+| Engagement signal | **Growing** |
 
-`8,294 tracked interaction events` does **not** mean 8,294 commands.
+`8,294 tracked interaction events` does **not** mean 8,294 slash commands.
 
-The metric combines activity recorded by the workflows and telemetry systems Avenue Guard monitors.
+The metric covers activity observed across the workflows and telemetry systems Avenue Guard tracks.
 
-### Machine-readable exports
+That distinction matters because Avenue Guard manages and observes long-running community processes rather than simply responding to explicit commands.
 
-An impact run can produce the same snapshot as:
+## Machine-readable exports
+
+An impact run can export the same snapshot as:
 
 - Markdown;
 - summary CSV;
@@ -519,34 +573,40 @@ An impact run can produce the same snapshot as:
 - breakdown CSV;
 - and raw JSON.
 
-This makes the telemetry usable outside Discord for spreadsheets, charts, longitudinal comparisons and future portfolio reporting.
+That makes the telemetry usable outside Discord for spreadsheets, charts, longitudinal comparison, forecasting and portfolio evidence.
 
 ---
 
 # Smaller systems and quality-of-life features
 
-Not every useful feature needs its own architecture section.
+Not every useful feature needs its own section.
 
 Avenue Guard also includes:
 
 - configurable message-triggered auto-responses;
 - recurring/sticky channel notices;
+- configurable role-notification DMs;
 - server icon rotation;
 - member-created artwork in the icon rotation;
-- background summaries;
-- smaller community/fun commands;
-- configurable role-notification DMs;
-- and staff-facing logging across its major systems.
+- daily/background summaries;
+- staff-facing logs;
+- impact and forecast reporting;
+- smaller community commands;
+- and fun features selected partly through community polls.
 
-Several of the community-facing features originated from member requests or polls rather than the original project plan.
+The server icon system, for example, can rotate through different themes and include member-created artwork.
 
-That is part of the design goal: Avenue Guard should be dependable infrastructure, but it should still feel like it belongs to the community using it.
+These are not the main engineering focus of Avenue Guard, but they matter to the project for another reason:
+
+Avenue Guard should be dependable infrastructure **without feeling disconnected from the community it serves**.
 
 ---
 
 # Architecture
 
-Avenue Guard is a modular Discord application rather than a single large command file.
+Avenue Guard is a modular Discord application rather than one giant command file.
+
+At a high level:
 
 ```text
                          Discord
@@ -574,3 +634,126 @@ Avenue Guard is a modular Discord application rather than a single large command
                │
                ▼
           Durable workflow state
+```
+
+Internally, the application is separated into broad areas:
+
+| Area | Responsibility |
+| --- | --- |
+| **Application layer** | Startup, configuration, database initialization, feature loading and persistent-component registration |
+| **Feature modules** | Requests, tracking, help/tickets, moderation, forums, background jobs and commands |
+| **Shared utilities** | Database access, checks, validation, transcripts, time handling, persistent views and error logging |
+| **Configuration** | Server-specific channels, roles, messages, permissions and workflow behaviour |
+| **Persistent storage** | Long-running operational state and history |
+| **Maintenance tooling** | Diagnostics, documentation, backups, recovery and testing support |
+
+Configuration is separated from most workflow logic so server-specific decisions can change without requiring every feature to be rewritten.
+
+---
+
+# Production evidence
+
+Avenue Guard is not a mockup or an abandoned prototype.
+
+It is deployed in the community it was designed for, and its behaviour continues to change in response to actual staff needs, member usage and production problems.
+
+Because the production source is private, this repository focuses on **observable engineering evidence**:
+
+- real workflow screenshots;
+- live production diagnostics;
+- real support interactions;
+- operational telemetry;
+- architecture;
+- measured impact;
+- and documented design decisions.
+
+The screenshots shown in this README come from the deployed system.
+
+---
+
+# Scope and non-goals
+
+Avenue Guard is intentionally opinionated.
+
+## It is built for one community
+
+Many workflows reflect the way **Geometry Dash Avenue** actually operates.
+
+It is not intended to be a universal Discord framework.
+
+## It does not automate human judgment
+
+Validation and guardrails can reduce repetitive work, but staff still make decisions that require context.
+
+## External services are treated as unreliable dependencies
+
+Avenue Guard can reduce the effect of outages through caching, retries and fallbacks, but it cannot guarantee the availability of systems it does not control.
+
+## It is not designed around public self-hosting
+
+The production application is operated for GD Avenue rather than packaged as a general bot for arbitrary servers.
+
+---
+
+# What I learned
+
+Avenue Guard changed how I think about software.
+
+At the beginning, I mostly thought about failures as individual bugs:
+
+1. something breaks;
+2. find the error;
+3. fix it;
+4. deploy again.
+
+Operating software used by real people made that model insufficient.
+
+A failed request affects a member.
+
+Lost ticket state creates work for staff.
+
+A dependency outage should not necessarily take down the surrounding workflow.
+
+A deployment should not make an existing button forget what it does.
+
+That pushed the project toward questions I had not originally been designing around:
+
+- How does state survive?
+- What happens if two actions arrive together?
+- Can a workflow be resumed?
+- Can staff determine what happened afterwards?
+- Can we detect configuration drift before users do?
+- Can one dependency fail without breaking everything around it?
+- How do we recover when production state and the Discord environment stop matching?
+
+Those questions became more important to Avenue Guard than any individual command.
+
+---
+
+# About the source code
+
+The complete production source repository is private.
+
+Avenue Guard is tightly coupled to a live community, including its configuration, staff workflows, moderation rules, operational assumptions and recovery paths.
+
+This repository therefore serves as a **public engineering case study** rather than a source distribution of the live application.
+
+It documents:
+
+- the problems the system solves;
+- the major workflows;
+- its architecture;
+- reliability mechanisms;
+- real production interactions;
+- operational tooling;
+- and measured usage.
+
+The goal is to make the engineering work inspectable without publishing the complete production implementation.
+
+---
+
+# Current status
+
+**Live and actively maintained.**
+
+Avenue Guard continues to evolve alongside Geometry Dash Avenue, with changes driven by real member usage, staff needs, production failures and patterns observed through its telemetry.
